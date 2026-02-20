@@ -41,7 +41,7 @@ export default {
     }
 
     const title = generateTitle();
-    const lines = [title, ...text.split("\n")];
+    const lines = [title, ...text.split("\n"), "#未整理"];
 
     try {
       // /api/users/me からCSRFトークンを取得
@@ -59,7 +59,7 @@ export default {
 };
 
 /** JST で メモ_YYYY-MM-DD_HHmm 形式のタイトルを生成 */
-function generateTitle(): string {
+export function generateTitle(): string {
   const now = new Date();
   // UTC+9 で JST を計算
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
