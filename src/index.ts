@@ -44,7 +44,7 @@ export default {
     const lines = [title, ...text.split("\n")];
 
     try {
-      // CSRF トークンを取得
+      // /api/users/me からCSRFトークンを取得
       const csrfToken = await fetchCsrfToken(env);
 
       // Import API でページ作成
@@ -71,58 +71,44 @@ function generateTitle(): string {
   return `メモ_${y}-${mo}-${d}_${h}${mi}`;
 }
 
-/** Scrapbox のページHTMLからCSRFトークンを抽出 */
+/** /api/users/me からCSRFトークンを取得 */
 async function fetchCsrfToken(env: Env): Promise<string> {
-  const url = `https://scrapbox.io/${env.SCRAPBOX_PROJECT}`;
-  const res = await fetch(url, {
+  const res = await fetch("https://scrapbox.io/api/users/me", {
     headers: {
       Cookie: `connect.sid=${env.SCRAPBOX_SID}`,
     },
-    redirect: "follow",
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch CSRF token: ${res.status}`);
   }
-  const html = await res.text();
-
-  // <meta name="csrf-token" content="..."> から抽出
-  const metaMatch = html.match(
-    /<meta\s+name="csrf-token"\s+content="([^"]+)"/,
-  );
-  if (metaMatch) return metaMatch[1];
-
-  // window._csrf = "..." から抽出
-  const scriptMatch = html.match(/window\._csrf\s*=\s*"([^"]+)"/);
-  if (scriptMatch) return scriptMatch[1];
-
-  // CSRF-TOKEN cookie から抽出
-  const cookies = res.headers.getAll("set-cookie");
-  for (const cookie of cookies) {
-    const m = cookie.match(/(?:csrf|CSRF)[-_]?[Tt]oken=([^;]+)/);
-    if (m) return m[1];
+  const data = (await res.json()) as { csrfToken?: string };
+  if (!data.csrfToken) {
+    throw new Error("csrfToken not found in /api/users/me response");
   }
-
-  throw new Error("CSRF token not found in page response");
+  return data.csrfToken;
 }
 
-/** Scrapbox Import API にページをPOST */
+/** Scrapbox Import API にページをPOST (multipart/form-data) */
 async function importPage(
   env: Env,
   body: ImportBody,
   csrfToken: string,
 ): Promise<void> {
   const url = `https://scrapbox.io/api/page-data/import/${env.SCRAPBOX_PROJECT}.json`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json;charset=utf-8",
-    Cookie: `connect.sid=${env.SCRAPBOX_SID}`,
-  };
-  if (csrfToken) {
-    headers["X-CSRF-TOKEN"] = csrfToken;
-  }
+  const json = JSON.stringify(body);
+  const file = new File([json], "import.json", {
+    type: "application/json",
+  });
+  const formData = new FormData();
+  formData.append("import-file", file);
+
   const res = await fetch(url, {
     method: "POST",
-    headers,
-    body: JSON.stringify(body),
+    headers: {
+      Cookie: `connect.sid=${env.SCRAPBOX_SID}`,
+      "X-CSRF-TOKEN": csrfToken,
+    },
+    body: formData,
   });
   if (!res.ok) {
     const text = await res.text();
