@@ -1,6 +1,7 @@
 name = "scrapbox-replay-server"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+account_id = "f630e89b63bf3ff641fe15da1bfd06cc"
 
 [observability]
 enabled = true
