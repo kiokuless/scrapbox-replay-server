@@ -71,23 +71,38 @@ function generateTitle(): string {
   return `メモ_${y}-${mo}-${d}_${h}${mi}`;
 }
 
-/** Scrapbox からCSRFトークン (connect.sid cookie で認証済みページを取得) */
+/** Scrapbox のページHTMLからCSRFトークンを抽出 */
 async function fetchCsrfToken(env: Env): Promise<string> {
-  const url = `https://scrapbox.io/api/pages/${env.SCRAPBOX_PROJECT}?limit=1`;
+  const url = `https://scrapbox.io/${env.SCRAPBOX_PROJECT}`;
   const res = await fetch(url, {
     headers: {
       Cookie: `connect.sid=${env.SCRAPBOX_SID}`,
     },
+    redirect: "follow",
   });
   if (!res.ok) {
     throw new Error(`Failed to fetch CSRF token: ${res.status}`);
   }
-  const token = res.headers.get("x-csrftoken");
-  if (!token) {
-    // トークンがなくてもインポートできる場合があるので空文字を返す
-    return "";
+  const html = await res.text();
+
+  // <meta name="csrf-token" content="..."> から抽出
+  const metaMatch = html.match(
+    /<meta\s+name="csrf-token"\s+content="([^"]+)"/,
+  );
+  if (metaMatch) return metaMatch[1];
+
+  // window._csrf = "..." から抽出
+  const scriptMatch = html.match(/window\._csrf\s*=\s*"([^"]+)"/);
+  if (scriptMatch) return scriptMatch[1];
+
+  // CSRF-TOKEN cookie から抽出
+  const cookies = res.headers.getAll("set-cookie");
+  for (const cookie of cookies) {
+    const m = cookie.match(/(?:csrf|CSRF)[-_]?[Tt]oken=([^;]+)/);
+    if (m) return m[1];
   }
-  return token;
+
+  throw new Error("CSRF token not found in page response");
 }
 
 /** Scrapbox Import API にページをPOST */
